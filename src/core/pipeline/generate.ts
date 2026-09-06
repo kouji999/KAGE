@@ -84,6 +84,22 @@ function cleanDraft(raw: string): string {
   }
   draft = draft.trim();
 
+  // gaya chat santai: huruf kecil semua — CAPS utuh dipertahankan hanya untuk
+  // tekanan emosional (kata >=3 huruf caps penuh, mis. "SERIUSSS??")
+  draft = draft
+    .split(/(\s+)/)
+    .map((w) => {
+      const core = w.replace(/[^\p{L}]/gu, '');
+      const allCaps = core.length >= 3 && core === core.toUpperCase();
+      return allCaps ? w : w.toLowerCase();
+    })
+    .join('');
+  // zero emoji — strip emoji & pictograph (termasuk ZWJ sequences)
+  draft = draft
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}]/gu, '')
+    .replace(/  +/g, ' ')
+    .trim();
+
   if (draft.length > DRAFT_MAX_CHARS) {
     // potong di batas kata terdekat
     const cut = draft.slice(0, DRAFT_MAX_CHARS);
