@@ -14,6 +14,22 @@ export type { ApiDeps };
 export function buildServer(deps: ApiDeps): FastifyInstance {
   const app = Fastify({ logger: false });
 
+  // POST aksi (approve/reject/takeover/release/read) boleh tanpa body —
+  // default parser Fastify menolak empty JSON body (400 FST_ERR_CTP_EMPTY_JSON_BODY).
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'string' },
+    (_req, body, done) => {
+      const s = body as string;
+      if (s === '') return done(null, {});
+      try {
+        done(null, JSON.parse(s) as unknown);
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    },
+  );
+
   app.addHook('onRequest', async (req, reply) => {
     const url = req.url ?? '';
     if (!url.startsWith('/api/')) return; // panel static is public; it sends Bearer via fetch

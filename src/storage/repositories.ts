@@ -422,6 +422,13 @@ export class MessageRepository {
     return rows.map((r) => this.map(r));
   }
 
+  /** JID yang pernah mengirim pesan masuk — whitelist aman untuk boot retry. */
+  static listIncomingJids(): { contact_jid: string }[] {
+    return getDb()
+      .prepare(`SELECT DISTINCT contact_jid FROM messages WHERE direction = 'in'`)
+      .all() as { contact_jid: string }[];
+  }
+
   static incrementAttempt(id: number): void {
     getDb().prepare(`UPDATE messages SET attempt = attempt + 1 WHERE id = ?`).run(id);
   }

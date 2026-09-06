@@ -57,10 +57,10 @@ export const config = {
     model: str(process.env.VOICE_MODEL, 'deepgram/flux-tts:free'),
     voiceName: str(process.env.VOICE_NAME, 'flux-donovan-en'),
     format: str(process.env.VOICE_FORMAT, 'mp3'),
-    /** voice = send voice note (fallback text on TTS failure), text = text only, both = both */
-    mode: (['voice', 'text', 'both'].includes(str(process.env.VOICE_MODE, 'voice'))
-      ? str(process.env.VOICE_MODE, 'voice')
-      : 'voice') as 'voice' | 'text' | 'both',
+    /** text = default (teks saja); voice = voice-note via flag owner; both = teks + voice */
+    mode: (['voice', 'text', 'both'].includes(str(process.env.VOICE_MODE, 'text'))
+      ? str(process.env.VOICE_MODE, 'text')
+      : 'text') as 'voice' | 'text' | 'both',
     timeoutMs: num(process.env.VOICE_TIMEOUT_MS, 120_000),
     maxChars: num(process.env.VOICE_MAX_CHARS, 1200),
   },
