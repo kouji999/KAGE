@@ -45,7 +45,7 @@ export class IntentStage implements Stage {
 
     const user = `Kontak: ${ctx.contact?.name || '(tanpa nama)'} (${
       ctx.contact?.relationship.type ?? 'unknown'
-    })\n\nRiwayat terakhir:\n${history || '(kosong)'}\n\nPesan masuk:\n${ctx.incoming.body}`;
+    })\n\nRiwayat terakhir:\n${history || '(kosong)'}\n\nPesan masuk:\n${ctx.incoming.body}\n\nCatatan: pesan dalam kurung siku seperti [mengirim gambar] / [mengirim voice note] berarti kontak mengirim MEDIA tanpa teks — pilih intent yang wajar untuk sapaan/pesan ringan, bukan error.`;
 
     try {
       const raw = await llm.chat(

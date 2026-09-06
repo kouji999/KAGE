@@ -34,7 +34,17 @@ export class GenerateStage implements Stage {
       .join('\n');
     const instruction = STRATEGY_INSTRUCTION[ctx.strategy] ?? 'Balas pesan ini.';
 
-    const user = `Kontak: ${ctx.contact?.name || '(tanpa nama)'}\nHubungan: ${ctx.relationSummary}\n\nMemori tentang kontak:\n${memoryBullets || '(belum ada)'}\n\nRiwayat percakapan:\n${historyLines || '(belum ada)'}\n\nPesan terbaru dari kontak:\n${ctx.incoming.body}\n\nStrategi: ${ctx.strategy} — ${instruction}\n\nTulis balasanmu sekarang.`;
+    // Konteks media: pesan masuk bukan teks murni (gambar/voice/file tanpa caption).
+    const mediaNote =
+      ctx.incoming.kind === 'image'
+        ? '(Kontak mengirim GAMBAR/sticker tanpa caption. Kamu TIDAK bisa melihat isinya. Jangan mengarang isi gambar. Respons natural datar: akur keberadaannya, mis. menyuruh jelaskan, atau "Oke." singkat.)'
+        : ctx.incoming.kind === 'audio'
+          ? '(Kontak mengirim VOICE NOTE. Kamu TIDAK bisa mendengarnya. Jangan mengarang isinya. Respons natural datar: mis. "Nanti aku dengar." atau minta ketik.)'
+          : ctx.incoming.kind === 'unknown' && /^\[mengirim /.test(ctx.incoming.body)
+            ? '(Kontak mengirim media/file tanpa caption. Kamu tidak bisa membukanya sekarang. Respons singkat datar: akur + evasif natural.)'
+            : '';
+
+    const user = `Kontak: ${ctx.contact?.name || '(tanpa nama)'}\nHubungan: ${ctx.relationSummary}\n\nMemori tentang kontak:\n${memoryBullets || '(belum ada)'}\n\nRiwayat percakapan:\n${historyLines || '(belum ada)'}\n\nPesan terbaru dari kontak:\n${ctx.incoming.body}${mediaNote ? '\n\n' + mediaNote : ''}\n\nStrategi: ${ctx.strategy} — ${instruction}\n\nTulis balasanmu sekarang.`;
 
     try {
       const raw = await llm.chat(

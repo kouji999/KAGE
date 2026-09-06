@@ -8,7 +8,7 @@ export class ContactStage implements Stage {
 
   async execute(ctx: PipelineContext): Promise<void> {
     if (ctx.decision === 'skipped') return;
-    // No phonebook di MVP — nama dikosongkan, upsert mempertahankan nama existing.
-    ctx.contact = ContactRepository.upsertByJid(ctx.incoming.jid, '');
+    // pushName dari WA (display name kontak) — penting utk JID @lid yang tanpa nomor.
+    ctx.contact = ContactRepository.upsertByJid(ctx.incoming.jid, ctx.incoming.pushName ?? '');
   }
 }

@@ -93,7 +93,7 @@ export class BaileysProvider implements WhatsAppProvider {
       },
       logger: silentPino,
       browser: Browsers.ubuntu('KAGE'),
-      markOnlineOnConnect: false,
+      markOnlineOnConnect: true, // WA push pesan realtime hanya ke device yang appear online
       syncFullHistory: false,
     });
     this.sock = sock;
@@ -242,6 +242,16 @@ export class BaileysProvider implements WhatsAppProvider {
     messages: WAMessage[];
     type: MessageUpsertType;
   }): void {
+    const first = payload.messages[0];
+    log.debug(
+      {
+        type: payload.type,
+        count: payload.messages.length,
+        jid: first?.key?.remoteJid,
+        fromMe: first?.key?.fromMe,
+      },
+      'messages.upsert received',
+    );
     if (payload.type !== 'notify') return;
 
     for (const msg of payload.messages) {
@@ -252,13 +262,41 @@ export class BaileysProvider implements WhatsAppProvider {
       if (msg.key?.fromMe) continue;
 
       const m = msg.message;
-      const body =
+      const caption =
         m?.conversation ??
         m?.extendedTextMessage?.text ??
         m?.imageMessage?.caption ??
         m?.videoMessage?.caption ??
         null;
-      if (!body) continue; // media without caption — text MVP skips
+
+      // Media tanpa caption TIDAK boleh didiamkan — kontak menunggu respons.
+      // Deskripsi media jadi body supaya pipeline bisa jawab natural.
+      let mediaKind: IncomingMessage['kind'] = 'text';
+      let mediaDesc = '';
+      if (caption === null || caption === undefined || caption.trim() === '') {
+        if (m?.imageMessage) {
+          mediaKind = 'image';
+          mediaDesc = '[mengirim gambar]';
+        } else if (m?.stickerMessage) {
+          mediaKind = 'image';
+          mediaDesc = '[sticker]';
+        } else if (m?.audioMessage) {
+          mediaKind = 'audio';
+          mediaDesc = '[mengirim voice note]';
+        } else if (m?.videoMessage) {
+          mediaKind = 'unknown';
+          mediaDesc = '[mengirim video]';
+        } else if (m?.documentMessage) {
+          mediaKind = 'unknown';
+          mediaDesc = '[mengirim file: ' + (m.documentMessage.fileName ?? 'tanpa nama') + ']';
+        } else {
+          continue; // benar-benar tak dikenal (reaction, ephemeral setting, dll)
+        }
+      }
+      const body = (caption && caption.trim() !== '' ? caption : mediaDesc).trim();
+      if (!body) continue;
+      const kind: IncomingMessage['kind'] =
+        caption && caption.trim() !== '' ? 'text' : mediaKind;
 
       const tsRaw = Number(msg.messageTimestamp ?? 0);
       const timestamp = Number.isFinite(tsRaw) && tsRaw > 0 ? tsRaw * 1000 : Date.now();
@@ -270,7 +308,8 @@ export class BaileysProvider implements WhatsAppProvider {
         body,
         timestamp,
         fromMe: Boolean(msg.key?.fromMe),
-        kind: 'text',
+        kind,
+        pushName: msg.pushName ?? undefined,
       };
 
       for (const handler of this.messageHandlers) {

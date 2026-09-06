@@ -5,8 +5,9 @@
 import { ConversationRepository, MessageRepository, OwnerRepository } from '../../storage/index.js';
 import type { PipelineContext, Stage } from './pipeline.js';
 
-/** MVP: hanya DM individual. Group (@g.us) dsb di-skip. */
-const DM_JID_RE = /^\d+@s\.whatsapp\.net$/;
+/** DM: individual phone JID (@s.whatsapp.net) ATAU LID (@lid — identitas WA baru,
+ *  dipakai untuk banyak akun sekarang). Group (@g.us) & broadcast di-skip adapter. */
+const DM_JID_RE = /^\d+@(s\.whatsapp\.net|lid)$/;
 
 export class MessageStage implements Stage {
   readonly name = 'message';

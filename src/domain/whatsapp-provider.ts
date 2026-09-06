@@ -19,6 +19,8 @@ export interface IncomingMessage {
   fromMe: boolean;
   /** raw message type hint: text, image, audio, unknown */
   kind: 'text' | 'image' | 'audio' | 'unknown';
+  /** WA display name (pushName) bila tersedia */
+  pushName?: string;
 }
 
 export interface OutgoingMessage {
