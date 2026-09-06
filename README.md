@@ -101,7 +101,9 @@ src/
 
 ## Catatan
 
+- **Hanya chat pribadi (DM)** yang dijawab. Grup, status/story, dan pesan dari nomor owner sendiri di-skip.
+- **Default balas teks.** Voice note hanya atas permintaan owner: toggle "Voice note" di panel, atau `voice: true` di API. TTS gagal → otomatis fallback teks.
+- Persona default: **Ayanokouji Kiyotaka** — datar, tenang, minim kata, tidak terpancing, tidak pernah berkomitmen atas nama owner. Bisa diubah lewat `PUT /api/v1/personality` atau panel.
 - Baileys = unofficial. Rate limiting untuk stabilitas & pola wajar, bukan mengakali enforcement WhatsApp. Risiko session instability diakui eksplisit.
-- Voice note: TTS gagal apapun alasan → fallback kirim teks, tidak pernah gagal kirim.
 
 **Author:** Raliq Hidayat BM3
