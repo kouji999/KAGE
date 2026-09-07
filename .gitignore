@@ -6,3 +6,6 @@ auth/
 *.db
 *.db-journal
 *.log
+
+auth-backup*/
+data/kage-qr.png
