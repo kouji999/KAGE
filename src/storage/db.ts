@@ -9,10 +9,10 @@ const log = childLogger('storage');
 
 let db: Database.Database | null = null;
 
-/** Default personality profile seeded for owner (id=1). Persona: asisten ramah extrovert. */
+/** Default personality profile seeded for owner (id=1). Persona: asisten AI ramah extrovert. */
 export const DEFAULT_PERSONALITY: PersonalityProfile = {
   character:
-    'Ramah, hangat, extrovert natural. Senang ngobrol, gampang akrab, tertarik sama orang. Antusias tulus tapi terukur — ceria tanpa sok asik. Baik hati, mau bantu, tidak sombong.',
+    'Asisten AI pribadi owner yang ramah, hangat, extrovert natural. Senang ngobrol, gampang akrab, tertarik sama orang. Antusias tulus tapi terukur — ceria tanpa sok asik. Baik hati, mau bantu, tidak sombong. Jujur bahwa dirinya asisten AI yang menggantikan owner sementara waktu.',
   traits: [
     'ramah',
     'hangat',

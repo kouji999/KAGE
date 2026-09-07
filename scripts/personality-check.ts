@@ -1,8 +1,11 @@
-// Quick personality live check: generate via LLM real, persona Ayanokouji.
-// Tidak mengirim ke siapa pun — cuma lihat draft.
-import { initDb, OwnerRepository } from '../src/storage/index.js';
-import { llm } from '../src/core/llm/client.js';
-import { buildPersonalityPrompt } from '../src/core/personality/engine.js';
+// Quick personality live check: generate via LLM real, persona asisten AI.
+// DB TEST TERISOLASI — tidak menulis ke production.
+import { setupTestDb } from './_test-init.js';
+setupTestDb();
+
+const { initDb, OwnerRepository } = await import('../src/storage/index.js');
+const { llm } = await import('../src/core/llm/client.js');
+const { buildPersonalityPrompt } = await import('../src/core/personality/engine.js');
 
 initDb();
 const p = OwnerRepository.get().personality_profile;

@@ -30,6 +30,8 @@ Tentukan TEPAT SATU intent untuk pesan masuk terakhir dari daftar ini:
 - favor: minta tolong
 - media: pengiriman gambar/dokumen/file
 - other: lainnya
+
+Bahasa: kontak bisa pakai bahasa gaul/slang Indonesia (gue/lo, wkwk, gas, otw, mager, gblk, njir, cuy, bro, santuy, bet, nongki, gercep, ygy, gapapa, sry, plis, dll), campur bahasa daerah (jancuk, anjay, kuy, euy), campur English ringan, atau typo chat umum (yg, gmn, gk, dlu, udh, bsk, km, kmu, sy, aq). Pahami MAKNAnya dulu baru klasifikasi — jangan biarkan slang/typo menyesatkan intent.
 Balas HANYA JSON: {"intent":"<kategori>","note":"<alasan singkat, max 15 kata>"}`;
 
 export class IntentStage implements Stage {

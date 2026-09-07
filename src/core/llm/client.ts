@@ -44,9 +44,31 @@ interface ChatCompletionResponse {
   usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
+interface ProviderSpec {
+  name: 'primary' | 'backup';
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  timeoutMs: number;
+}
+
 /** GLM-5.3 reasoning model kadang menyisipkan <think> blok inline di content. */
 function stripThink(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+}
+
+/**
+ * Parse response JSON toleran — 9router (verified empirik 2026-09-07) kadang
+ * menempelkan sisa SSE `data: [DONE]` di akhir body non-stream.
+ */
+function parseCompletionJson(text: string): ChatCompletionResponse {
+  try {
+    return JSON.parse(text) as ChatCompletionResponse;
+  } catch {
+    const m = /\{[\s\S]*\}/.exec(text);
+    if (!m) throw new Error(`LLM returned invalid JSON: ${text.slice(0, 300)}`);
+    return JSON.parse(m[0]) as ChatCompletionResponse;
+  }
 }
 
 export class LlmClient {
@@ -57,16 +79,56 @@ export class LlmClient {
    * GLM-5.3 = reasoning model (verified empirik): reasoning dipisah ke
    * `reasoning_content`, `content` bisa null saat max_tokens habis di tengah
    * reasoning (finish_reason=length) → retry otomatis dengan max_tokens lebih besar.
+   *
+   * Chain provider: primary → backup (9router) kalau primary gagal total.
    */
   async chat(messages: ChatMessage[], opts?: ChatOptions): Promise<string> {
     const purpose = opts?.purpose ?? 'chat';
     this.assertBudget();
 
+    const providers: ProviderSpec[] = [
+      {
+        name: 'primary',
+        baseUrl: config.llm.baseUrl,
+        apiKey: config.llm.apiKey,
+        model: config.llm.model,
+        timeoutMs: config.llm.timeoutMs,
+      },
+    ];
+    const fb = config.llm.fallback;
+    if (fb.baseUrl !== '' && fb.model !== '' && fb.apiKey !== '') {
+      providers.push({ name: 'backup', baseUrl: fb.baseUrl, apiKey: fb.apiKey, model: fb.model, timeoutMs: fb.timeoutMs });
+    }
+
+    let lastErr: unknown;
+    for (const p of providers) {
+      try {
+        return await this.chatWith(p, messages, opts);
+      } catch (err) {
+        if (err instanceof BudgetExceededError) throw err;
+        lastErr = err;
+        if (p.name === 'primary' && providers.length > 1) {
+          log.warn(
+            { purpose, provider: p.name, err: errMsg(err) },
+            'primary LLM gagal — fallback ke backup provider',
+          );
+        }
+      }
+    }
+    throw new Error(`all LLM providers failed: ${errMsg(lastErr)}`);
+  }
+
+  private async chatWith(
+    p: ProviderSpec,
+    messages: ChatMessage[],
+    opts?: ChatOptions,
+  ): Promise<string> {
+    const purpose = opts?.purpose ?? 'chat';
     let maxTokens = opts?.maxTokens ?? config.llm.maxTokens;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const payload = {
-        model: config.llm.model,
+        model: p.model,
         messages,
         temperature: opts?.temperature ?? 0.7,
         max_tokens: maxTokens,
@@ -74,43 +136,37 @@ export class LlmClient {
 
       let res: Response;
       try {
-        res = await fetch(`${config.llm.baseUrl}/chat/completions`, {
+        res = await fetch(`${p.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${config.llm.apiKey}`,
+            Authorization: `Bearer ${p.apiKey}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(config.llm.timeoutMs),
+          signal: AbortSignal.timeout(p.timeoutMs),
         });
       } catch (err) {
         // network / DNS / abort
         if (attempt < MAX_ATTEMPTS) {
-          log.warn({ purpose, attempt, err: errMsg(err) }, 'llm network error, retrying');
+          log.warn({ purpose, provider: p.name, attempt, err: errMsg(err) }, 'llm network error, retrying');
           await sleep(RETRY_BACKOFF_MS);
           continue;
         }
-        throw new Error(`LLM network error after ${MAX_ATTEMPTS} attempts: ${errMsg(err)}`);
+        throw new Error(`LLM(${p.name}) network error after ${MAX_ATTEMPTS} attempts: ${errMsg(err)}`);
       }
 
       const text = await res.text();
 
       if (!res.ok) {
         if (res.status >= 500 && attempt < MAX_ATTEMPTS) {
-          log.warn({ purpose, attempt, status: res.status }, 'llm 5xx, retrying');
+          log.warn({ purpose, provider: p.name, attempt, status: res.status }, 'llm 5xx, retrying');
           await sleep(RETRY_BACKOFF_MS);
           continue;
         }
-        throw new Error(`LLM API ${res.status}: ${text.slice(0, 500)}`);
+        throw new Error(`LLM(${p.name}) API ${res.status}: ${text.slice(0, 500)}`);
       }
 
-      let data: ChatCompletionResponse;
-      try {
-        data = JSON.parse(text) as ChatCompletionResponse;
-      } catch {
-        throw new Error(`LLM returned invalid JSON: ${text.slice(0, 500)}`);
-      }
-
+      const data = parseCompletionJson(text);
       const choice = data.choices?.[0];
       let content = choice?.message?.content;
       const reasoning = choice?.message?.reasoning_content;
@@ -121,7 +177,7 @@ export class LlmClient {
           // reasoning makan seluruh budget sebelum jawaban tercetak — naikkan token
           maxTokens = Math.min(maxTokens * 2, 4000);
           log.warn(
-            { purpose, attempt, maxTokens },
+            { purpose, provider: p.name, attempt, maxTokens },
             'content kosong (finish=length, reasoning) — retry max_tokens lebih besar',
           );
           await sleep(RETRY_BACKOFF_MS);
@@ -131,19 +187,20 @@ export class LlmClient {
           // last resort: jawaban JSON kadang ada di dalam reasoning — stage parse dengan parseLlmJson
           content = reasoning;
         } else {
-          throw new Error(`LLM response missing content: ${text.slice(0, 300)}`);
+          throw new Error(`LLM(${p.name}) response missing content: ${text.slice(0, 300)}`);
         }
       }
 
       const inputTokens = data.usage?.prompt_tokens ?? 0;
       const outputTokens = data.usage?.completion_tokens ?? 0;
       const estCostUsd = ((inputTokens + outputTokens) / 1_000_000) * USD_PER_MTOKEN;
-      LlmUsageRepository.add(purpose, config.llm.model, inputTokens, outputTokens, estCostUsd);
+      LlmUsageRepository.add(purpose, p.model, inputTokens, outputTokens, estCostUsd);
+      if (p.name === 'backup') log.info({ purpose }, 'llm call terlayani via BACKUP provider');
 
       return stripThink(content);
     }
 
-    throw new Error('unreachable: llm retry loop exited');
+    throw new Error(`unreachable: llm(${p.name}) retry loop exited`);
   }
 
   /** Health check murah: GET /models, timeout 10s. */

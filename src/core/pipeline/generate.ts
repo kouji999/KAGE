@@ -44,7 +44,20 @@ export class GenerateStage implements Stage {
             ? '(Kontak mengirim media/file tanpa caption. Kamu tidak bisa membukanya sekarang. Respons singkat datar: akur + evasif natural.)'
             : '';
 
-    const user = `Kontak: ${ctx.contact?.name || '(tanpa nama)'}\nHubungan: ${ctx.relationSummary}\n\nMemori tentang kontak:\n${memoryBullets || '(belum ada)'}\n\nRiwayat percakapan:\n${historyLines || '(belum ada)'}\n\nPesan terbaru dari kontak:\n${ctx.incoming.body}${mediaNote ? '\n\n' + mediaNote : ''}\n\nStrategi: ${ctx.strategy} — ${instruction}\n\nTulis balasanmu sekarang.`;
+    // Self-introduction: chat PERTAMA di percakapan ini → perkenalkan diri
+    // sebagai asisten AI milik owner (owner lagi tidak aktif).
+    const isFirstMessage = ctx.history.length === 0;
+    const introNote = isFirstMessage
+      ? '(PERCAKAPAN BARU — pesan pertama dari kontak ini. Sisipkan perkenalan singkat dan ramah di awal balasan: kamu asisten AI-nya, dia sedang tidak bisa membalas, kamu yang menggantikan sementara, dan ngobrol santai sama kamu boleh. Satu-dua kalimat saja, jangan bertele-tele, lalu tanggapi pesannya.)'
+      : '';
+
+    // Mirror bahasa kontak: pahami slang/gaul/typo/daerah, balas dengan register serupa.
+    const langNote =
+      '(Bahasa kontak mungkin slang/gaul/typo/bahasa daerah — pahami maknanya. ' +
+      'Balas dengan gaya serupa tapi tetap jelas: kalau dia pakai "lo/gue" pakai "lo/gue", kalau formal pakai "kamu/aku". ' +
+      'Boleh pakai slang ringan umum (gas, otw, gapapa, santuy) TANPA sok anak muda paksaan, tanpa singkatan berlebihan yang membingungkan.)';
+
+    const user = `Kontak: ${ctx.contact?.name || '(tanpa nama)'}\nHubungan: ${ctx.relationSummary}\n\nMemori tentang kontak:\n${memoryBullets || '(belum ada)'}\n\nRiwayat percakapan:\n${historyLines || '(belum ada)'}\n\nPesan terbaru dari kontak:\n${ctx.incoming.body}${mediaNote ? '\n\n' + mediaNote : ''}${introNote ? '\n\n' + introNote : ''}\n\n${langNote}\n\nStrategi: ${ctx.strategy} — ${instruction}\n\nTulis balasanmu sekarang.`;
 
     try {
       const raw = await llm.chat(

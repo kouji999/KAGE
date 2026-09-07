@@ -48,6 +48,13 @@ export const config = {
     maxTokens: num(process.env.LLM_MAX_TOKENS, 700),
     monthlyBudgetUsd: num(process.env.LLM_MONTHLY_BUDGET_USD, 20),
     timeoutMs: num(process.env.LLM_TIMEOUT_MS, 90_000),
+    /** Backup provider (user request 2026-09-07): 9router lokal — dipakai kalau primary gagal total. */
+    fallback: {
+      baseUrl: str(process.env.LLM_FALLBACK_BASE_URL, ''),
+      apiKey: str(process.env.LLM_FALLBACK_API_KEY, process.env.DEVSTACK_API_KEY ?? ''),
+      model: str(process.env.LLM_FALLBACK_MODEL, ''),
+      timeoutMs: num(process.env.LLM_FALLBACK_TIMEOUT_MS, 120_000),
+    },
   },
 
   voice: {

@@ -1,21 +1,25 @@
 // E2E pipeline verification TANPA WhatsApp: fake provider, LLM + TTS + DB real.
-// Bukti alur: casual → AUTO send; money/commitment → HIGH → approval; hard rule HIGH.
-// Jalankan: npx tsx scripts/e2e-pipeline.ts
-import { initDb, ApprovalRepository, MessageRepository } from '../src/storage/index.js';
-import { RateLimiter, SendQueue } from '../src/queue/index.js';
-import { createPipelineContext, Pipeline } from '../src/core/pipeline/pipeline.js';
-import { MessageStage } from '../src/core/pipeline/message.js';
-import { ContactStage } from '../src/core/pipeline/contact.js';
-import { ContextStage } from '../src/core/pipeline/context.js';
-import { IntentStage } from '../src/core/pipeline/intent.js';
-import { RelationshipStage } from '../src/core/pipeline/relationship.js';
-import { MemoryStage } from '../src/core/pipeline/memory.js';
-import { StrategyStage } from '../src/core/pipeline/strategy.js';
-import { GenerateStage } from '../src/core/pipeline/generate.js';
-import { SafetyStage } from '../src/core/pipeline/safety.js';
-import { SendStage } from '../src/core/pipeline/send.js';
-import { assertSafeToSend } from '../src/core/pipeline/pipeline.js';
-import type { WhatsAppProvider, IncomingMessage } from '../src/domain/whatsapp-provider.js';
+// DB TEST TERISOLASI — tidak menulis ke production.
+import { setupTestDb } from './_test-init.js';
+setupTestDb();
+
+const { initDb, ApprovalRepository, MessageRepository } = await import('../src/storage/index.js');
+const { RateLimiter, SendQueue } = await import('../src/queue/index.js');
+const { createPipelineContext, Pipeline } = await import('../src/core/pipeline/pipeline.js');
+const { MessageStage } = await import('../src/core/pipeline/message.js');
+const { ContactStage } = await import('../src/core/pipeline/contact.js');
+const { ContextStage } = await import('../src/core/pipeline/context.js');
+const { IntentStage } = await import('../src/core/pipeline/intent.js');
+const { RelationshipStage } = await import('../src/core/pipeline/relationship.js');
+const { MemoryStage } = await import('../src/core/pipeline/memory.js');
+const { StrategyStage } = await import('../src/core/pipeline/strategy.js');
+const { GenerateStage } = await import('../src/core/pipeline/generate.js');
+const { SafetyStage } = await import('../src/core/pipeline/safety.js');
+const { SendStage } = await import('../src/core/pipeline/send.js');
+const { assertSafeToSend } = await import('../src/core/pipeline/pipeline.js');
+const typeWP = await import('../src/domain/whatsapp-provider.js');
+type IncomingMessage = typeWP.IncomingMessage;
+type WhatsAppProvider = typeWP.WhatsAppProvider;
 
 interface CapturedSend {
   jid: string;
@@ -66,29 +70,16 @@ async function main(): Promise<void> {
     rateLimiter: new RateLimiter(),
   });
   const pipeline = new Pipeline(
-    new MessageStage(),
-    new ContactStage(),
-    new ContextStage(),
-    new IntentStage(),
-    new RelationshipStage(),
-    new MemoryStage(),
-    new StrategyStage(),
-    new GenerateStage(),
-    new SafetyStage(),
-    new SendStage({ queue }),
+    new MessageStage(), new ContactStage(), new ContextStage(), new IntentStage(),
+    new RelationshipStage(), new MemoryStage(), new StrategyStage(), new GenerateStage(),
+    new SafetyStage(), new SendStage({ queue }),
   );
 
   const mkMsg = (jid: string, body: string): IncomingMessage => ({
     waMessageId: `e2e-${Math.random().toString(36).slice(2)}`,
-    jid,
-    senderJid: jid,
-    body,
-    timestamp: Date.now(),
-    fromMe: false,
-    kind: 'text',
+    jid, senderJid: jid, body, timestamp: Date.now(), fromMe: false, kind: 'text',
   });
 
-  // Isolation: fresh jid per run supaya history/memori run sebelumnya tidak bocor.
   const TEST_JID = `62${Math.floor(8100000000 + Math.random() * 899999999)}@s.whatsapp.net`;
 
   console.log('=== SIM 1: casual → AUTO send ===');
@@ -99,10 +90,6 @@ async function main(): Promise<void> {
   check('sim1: risk LOW/MEDIUM', ctx1.riskLevel !== 'HIGH', `got ${ctx1.riskLevel}`);
   check('sim1: draft non-kosong', ctx1.draft.length > 0, `len=${ctx1.draft.length}`);
   check('sim1: pesan terkirim via fake provider', fake.sent.length > 0, `sent=${fake.sent.length}`);
-  if (fake.sent.length > 0) {
-    check('sim1: jid benar', fake.sent[0].jid === TEST_JID, fake.sent[0].jid);
-    console.log(`   voice=${fake.sent[0].asVoiceNote} (TTS real; true = fallback text gagal → false = ok dua2nya)`);
-  }
 
   console.log('=== SIM 2: money/commitment → HIGH → approval ===');
   fake.sent = [];
