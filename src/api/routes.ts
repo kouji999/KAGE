@@ -1,5 +1,6 @@
 // Owner API routes — /api/v1/* — JSON only, manual validation, Bearer auth enforced in server.ts.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import QRCode from 'qrcode';
 import { config } from '../config/index.js';
 import { logger } from '../config/logger.js';
 import type {
@@ -297,6 +298,31 @@ export function registerRoutes(app: FastifyInstance, deps: ApiDeps): void {
     const voice = b.voice === undefined ? undefined : Boolean(b.voice);
     await deps.queue.enqueueRawText(jid, b.body.trim(), 'LOW', voice);
     reply.send({ ok: true, jid, voice: voice ?? null, note: 'queued (voice sesuai flag / config)' });
+  }));
+
+  /** OTP pairing code — alternatif scan QR (nomor telepon saja, tanpa kamera). */
+  app.post('/api/v1/session/pairing-code', guard(app, async (req, reply) => {
+    const b = (req.body ?? {}) as { phone?: unknown };
+    if (typeof b.phone !== 'string' || b.phone.replace(/\D/g, '').length < 8) {
+      return badRequest(reply, 'field "phone" wajib (mis. 087726681286)');
+    }
+    const st = deps.provider.getStatus();
+    if (st === 'connected' || st === 'off') {
+      return reply.code(409).send({
+        error: 'pairing tidak tersedia',
+        detail: `status ${st} — pairing code hanya saat menunggu QR`,
+      });
+    }
+    try {
+      const code = await deps.provider.requestPairingCode(b.phone);
+      reply.send({
+        ok: true,
+        code,
+        note: 'Masukkan kode ini di HP: WhatsApp > Perangkat Tertaut > Tautkan dengan nomor telepon > masukkan kode. Berlaku beberapa menit.',
+      });
+    } catch (err) {
+      reply.code(502).send({ error: 'pairing code gagal', detail: err instanceof Error ? err.message : String(err) });
+    }
   }));
 
   app.post('/api/v1/approvals/:id/approve', guard(app, async (req, reply) => {

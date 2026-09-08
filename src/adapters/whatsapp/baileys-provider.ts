@@ -183,6 +183,24 @@ export class BaileysProvider implements WhatsAppProvider {
     return this.qrString;
   }
 
+  /**
+   * OTP-style pairing code (8 digit) untuk nomor tertentu — alternatif scan QR.
+   * User masukin kode di: WhatsApp HP → Perangkat Tertaut → Tautkan dengan nomor telepon.
+   * Hanya valid saat device belum paired (status qr/connecting).
+   */
+  async requestPairingCode(phone: string): Promise<string> {
+    if (!this.sock) throw new Error('socket belum siap — coba lagi beberapa detik');
+    if (this.status === 'connected') {
+      throw new Error('sudah terhubung — pairing code hanya untuk device baru');
+    }
+    const digits = phone.replace(/\D/g, '');
+    const norm = digits.startsWith('0') ? '62' + digits.slice(1) : digits;
+    if (norm.length < 10) throw new Error('nomor tidak valid: ' + phone);
+    const code = await this.sock.requestPairingCode(norm);
+    log.info({ phone: norm }, 'pairing code diterbitkan');
+    return code;
+  }
+
   // -------------------------------------------------------------------------
   // Event handling
   // -------------------------------------------------------------------------

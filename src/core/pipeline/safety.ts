@@ -81,35 +81,39 @@ export class SafetyStage implements Stage {
     let finalRisk = maxRisk(ruleRisk, ctx.riskLevel);
 
     // --- LLM verification (best-effort, only escalate up) ---
-    try {
-      const user = `Kontak: ${ctx.contact?.name || '(tanpa nama)'}\nHubungan: ${ctx.relationSummary}\nIntent: ${ctx.intent}\n\nPesan masuk:\n${ctx.incoming.body}\n\nDraft balasan:\n${ctx.draft || '(kosong)'}`;
-      const raw = await llm.chat(
-        [
-          { role: 'system', content: VERIFY_SYSTEM },
-          { role: 'user', content: user },
-        ],
-        { purpose: 'safety', json: true, maxTokens: 1200, temperature: 0 },
-      );
+    // LATENSI: hanya jalan di zona abu-abu (MEDIUM). LOW = aman langsung kirim,
+    // HIGH = sudah fix approval — LLM tidak mengubah keduanya.
+    if (finalRisk === 'MEDIUM') {
+      try {
+        const user = `Kontak: ${ctx.contact?.name || '(tanpa nama)'}\nHubungan: ${ctx.relationSummary}\nIntent: ${ctx.intent}\n\nPesan masuk:\n${ctx.incoming.body}\n\nDraft balasan:\n${ctx.draft || '(kosong)'}`;
+        const raw = await llm.chat(
+          [
+            { role: 'system', content: VERIFY_SYSTEM },
+            { role: 'user', content: user },
+          ],
+          { purpose: 'safety', json: true, maxTokens: 1200, temperature: 0 },
+        );
 
-      const parsed = parseLlmJson<{ risk?: unknown; reasons?: unknown }>(raw);
-      const llmRisk = normalizeRisk(parsed?.risk);
-      if (llmRisk) {
-        if (RISK_RANK[llmRisk] > RISK_RANK[finalRisk]) {
-          reasons.push(`llm eskalasi ke ${llmRisk}`);
-        }
-        finalRisk = maxRisk(finalRisk, llmRisk);
-        if (Array.isArray(parsed?.reasons)) {
-          for (const r of parsed.reasons) {
-            if (typeof r === 'string' && r.trim() !== '') reasons.push(`llm: ${r.trim()}`);
+        const parsed = parseLlmJson<{ risk?: unknown; reasons?: unknown }>(raw);
+        const llmRisk = normalizeRisk(parsed?.risk);
+        if (llmRisk) {
+          if (RISK_RANK[llmRisk] > RISK_RANK[finalRisk]) {
+            reasons.push(`llm eskalasi ke ${llmRisk}`);
+          }
+          finalRisk = maxRisk(finalRisk, llmRisk);
+          if (Array.isArray(parsed?.reasons)) {
+            for (const r of parsed.reasons) {
+              if (typeof r === 'string' && r.trim() !== '') reasons.push(`llm: ${r.trim()}`);
+            }
           }
         }
+      } catch (err) {
+        // LLM error → hasil rule dipakai apa adanya
+        log.debug(
+          { jid: ctx.incoming.jid, err: err instanceof Error ? err.message : String(err) },
+          'safety llm verify unavailable — rule result stands',
+        );
       }
-    } catch (err) {
-      // LLM error → hasil rule dipakai apa adanya
-      log.debug(
-        { jid: ctx.incoming.jid, err: err instanceof Error ? err.message : String(err) },
-        'safety llm verify unavailable — rule result stands',
-      );
     }
 
     ctx.riskLevel = finalRisk;

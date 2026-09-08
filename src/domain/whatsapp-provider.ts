@@ -53,4 +53,10 @@ export interface WhatsAppProvider {
   onMessageStatus(handler: (update: { waMessageId: string; status: 'sent' | 'delivered' | 'read' | 'failed' }) => void): void;
   /** Current snapshot of connection state. */
   getStatus(): ProviderStatus;
+  /**
+   * Request 8-digit pairing code (OTP-style) untuk nomor tertentu — alternatif scan QR.
+   * HANYA valid saat device belum paired (status 'qr' / 'connecting').
+   * User memasukkan kode ini di: WhatsApp HP → Perangkat Tertaut → Tautkan dengan nomor telepon.
+   */
+  requestPairingCode(phone: string): Promise<string>;
 }

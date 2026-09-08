@@ -1,6 +1,8 @@
 // KAGE bootstrap (T20): config → DB → provider → health monitor → queue → pipeline → API.
 // Alur: Baileys message → pipeline 10 stage → safety-gated send / approval / hold.
 
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { config } from './config/index.js';
 import { childLogger } from './config/logger.js';
 import { MessageRepository, OwnerRepository, SessionRepository, initDb } from './storage/index.js';
@@ -12,10 +14,9 @@ import { createPipelineContext, Pipeline } from './core/pipeline/pipeline.js';
 import { MessageStage } from './core/pipeline/message.js';
 import { ContactStage } from './core/pipeline/contact.js';
 import { ContextStage } from './core/pipeline/context.js';
-import { IntentStage } from './core/pipeline/intent.js';
+import { ClassifyStage } from './core/pipeline/classify.js';
 import { RelationshipStage } from './core/pipeline/relationship.js';
 import { MemoryStage } from './core/pipeline/memory.js';
-import { StrategyStage } from './core/pipeline/strategy.js';
 import { GenerateStage } from './core/pipeline/generate.js';
 import { SafetyStage } from './core/pipeline/safety.js';
 import { SendStage } from './core/pipeline/send.js';
@@ -26,6 +27,10 @@ import type { ApiDeps } from './api/routes.js';
 const log = childLogger('bootstrap');
 
 async function main(): Promise<void> {
+  // Single-instance lock — DUA instance share auth dir = prekeys kekonsumsi dobel
+  // → Signal session korup (Bad MAC) → DM tidak terdekripsi. Hard-learned lesson.
+  acquireInstanceLock();
+
   log.info({ db: config.dbPath, auth: config.authDir }, 'KAGE starting');
 
   // 1. DB + migrations
@@ -53,15 +58,15 @@ async function main(): Promise<void> {
     rateLimiter: new RateLimiter(),
   });
 
-  // 5. Pipeline 10 stage (T7-T14) — urutan wajib sesuai spec
+  // 5. Pipeline — LATENSI-optimized: classify (gabungan intent+strategy, 1 LLM call)
+  // → generate (1 LLM call) → safety (rule-first, LLM verify cuma MEDIUM).
   const pipeline = new Pipeline(
     new MessageStage(),
     new ContactStage(),
     new ContextStage(),
-    new IntentStage(),
+    new ClassifyStage(),
     new RelationshipStage(),
     new MemoryStage(),
-    new StrategyStage(),
     new GenerateStage(),
     new SafetyStage(),
     new SendStage({ queue }),
@@ -177,6 +182,43 @@ function onHealthEvent(ev: HealthEvent): void {
     default:
       break;
   }
+}
+
+/** Lock file: hanya 1 instance KAGE boleh jalan. Lock dilihat pada startup. */
+function acquireInstanceLock(): void {
+  const lockFile = path.join(config.dataDir, 'kage.lock');
+  if (existsSync(lockFile)) {
+    try {
+      const pid = Number(readFileSync(lockFile, 'utf8').trim());
+      if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) {
+        // cek proses masih hidup
+        try {
+          process.kill(pid, 0);
+          console.error(
+            `KAGE sudah jalan (PID ${pid}). Tutup instance itu dulu, atau kill: taskkill /PID ${pid} /F`,
+          );
+          process.exit(2);
+        } catch {
+          // PID mati — lock basi, ambil alih
+        }
+      }
+    } catch {
+      // lock file corrupt — ambil alih
+    }
+  }
+  mkdirSync(config.dataDir, { recursive: true });
+  writeFileSync(lockFile, String(process.pid));
+  const release = (): void => {
+    try {
+      const cur = readFileSync(lockFile, 'utf8').trim();
+      if (cur === String(process.pid)) unlinkSync(lockFile);
+    } catch {
+      // sudah dihapus / hilang — abaikan
+    }
+  };
+  process.on('exit', release);
+  process.on('SIGINT', release);
+  process.on('SIGTERM', release);
 }
 
 main().catch((err: unknown) => {

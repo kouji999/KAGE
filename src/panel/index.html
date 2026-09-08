@@ -244,6 +244,15 @@
     <p class="muted" id="qrNote"></p>
     <div class="qr-box" id="qrBox" hidden></div>
     <p style="margin-top:10px"><button class="btn" id="qrBtn">Ambil QR String</button></p>
+    <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border-soft);">
+      <p class="muted" style="margin:0 0 8px; font-size:12px;">Atau pakai <b>kode OTP</b> (tanpa kamera): WhatsApp di HP &rsaquo; Perangkat Tertaut &rsaquo; Tautkan dengan nomor telepon</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <input id="pairPhone" type="text" inputmode="tel" placeholder="Nomor WA bot (mis. 087726681286)" style="flex:1; min-width:200px; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-soft); border-radius:8px;" />
+        <button class="btn primary" id="pairBtn">Minta Kode OTP</button>
+      </div>
+      <p id="pairCode" class="mono" style="display:none; margin-top:10px; font-size:26px; letter-spacing:6px; color:var(--accent); text-align:center;"></p>
+      <p id="pairNote" class="muted" style="margin:6px 0 0; font-size:12px;"></p>
+    </div>
   </section>
 
   <div class="grid">
@@ -708,6 +717,26 @@
         box.textContent = '(QR belum tersedia — status: ' + r.status + ')';
       }
     }).catch(function (err) { toast(err.message, 'err'); });
+  });
+
+  // ---- otp pairing code ----
+  $('pairBtn').addEventListener('click', function () {
+    var phone = $('pairPhone').value.trim();
+    if (!phone) { $('pairNote').textContent = 'Isi nomor WA bot dulu.'; return; }
+    $('pairBtn').disabled = true;
+    $('pairNote').textContent = 'meminta kode...';
+    $('pairCode').style.display = 'none';
+    api('POST', '/api/v1/session/pairing-code', { phone: phone })
+      .then(function (r) {
+        $('pairCode').style.display = 'block';
+        $('pairCode').textContent = r.code;
+        $('pairNote').textContent = r.note || 'Kode aktif beberapa menit.';
+      })
+      .catch(function (err) {
+        $('pairNote').textContent = '';
+        toast('Gagal: ' + err.message, 'err');
+      })
+      .finally(function () { $('pairBtn').disabled = false; });
   });
 
   // ---- refresh loop ----
