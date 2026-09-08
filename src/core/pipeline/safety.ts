@@ -91,7 +91,7 @@ export class SafetyStage implements Stage {
             { role: 'system', content: VERIFY_SYSTEM },
             { role: 'user', content: user },
           ],
-          { purpose: 'safety', json: true, maxTokens: 1200, temperature: 0 },
+            { purpose: 'safety', json: true, maxTokens: 1200, temperature: 0, fast: true },
         );
 
         const parsed = parseLlmJson<{ risk?: unknown; reasons?: unknown }>(raw);

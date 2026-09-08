@@ -9,10 +9,11 @@
 // Static import modul src/ TIDAK BOLEH — config ter-cache saat hoist sebelum env diset.
 
 import { mkdirSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 export function setupTestDb(): void {
-  const dir = path.resolve(process.cwd(), 'data-test');
+  const dir = path.join(os.tmpdir(), 'kage-test-' + process.pid + '-' + Date.now());
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   process.env.KAGE_DB_PATH = path.join(dir, 'test.db');

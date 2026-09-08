@@ -8,10 +8,10 @@ const { createPipelineContext, Pipeline } = await import('../src/core/pipeline/p
 const { MessageStage } = await import('../src/core/pipeline/message.js');
 const { ContactStage } = await import('../src/core/pipeline/contact.js');
 const { ContextStage } = await import('../src/core/pipeline/context.js');
-const { IntentStage } = await import('../src/core/pipeline/intent.js');
+const { ClassifyStage } = await import('../src/core/pipeline/classify.js');
 const { RelationshipStage } = await import('../src/core/pipeline/relationship.js');
 const { MemoryStage } = await import('../src/core/pipeline/memory.js');
-const { StrategyStage } = await import('../src/core/pipeline/strategy.js');
+
 const { GenerateStage } = await import('../src/core/pipeline/generate.js');
 const { SafetyStage } = await import('../src/core/pipeline/safety.js');
 const { SendStage } = await import('../src/core/pipeline/send.js');
@@ -38,8 +38,7 @@ const queue = new SendQueue({
   rateLimiter: new RateLimiter(),
 });
 const pipeline = new Pipeline(
-  new MessageStage(), new ContactStage(), new ContextStage(), new IntentStage(),
-  new RelationshipStage(), new MemoryStage(), new StrategyStage(), new GenerateStage(),
+  new MessageStage(), new ContactStage(), new ContextStage(), new ClassifyStage(), new RelationshipStage(), new MemoryStage(), new GenerateStage(),
   new SafetyStage(), new SendStage({ queue }),
 );
 

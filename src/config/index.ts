@@ -53,7 +53,10 @@ export const config = {
       baseUrl: str(process.env.LLM_FALLBACK_BASE_URL, ''),
       apiKey: str(process.env.LLM_FALLBACK_API_KEY, process.env.DEVSTACK_API_KEY ?? ''),
       model: str(process.env.LLM_FALLBACK_MODEL, ''),
+      /** model cepat utk task ringan (classify/safety verify) via 9router */
+      fastModel: str(process.env.LLM_FAST_MODEL, ''),
       timeoutMs: num(process.env.LLM_FALLBACK_TIMEOUT_MS, 120_000),
+      fastTimeoutMs: num(process.env.LLM_FAST_TIMEOUT_MS, 30_000),
     },
   },
 

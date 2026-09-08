@@ -1,11 +1,14 @@
 node_modules/
 dist/
 data/
+data-test/
 auth/
+auth-backup*/
 .env
 *.db
 *.db-journal
 *.log
+
 
 auth-backup*/
 data/kage-qr.png

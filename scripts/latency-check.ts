@@ -1,4 +1,5 @@
-// Verifikasi slang/gaul comprehension — pipeline penuh, DB TEST TERISOLASI (bukan prod!).
+// Latensi check: pipeline penuh (classify → generate) dengan timer.
+// DB TEST TERISOLASI.
 import { setupTestDb } from './_test-init.js';
 setupTestDb();
 
@@ -11,11 +12,9 @@ const { ContextStage } = await import('../src/core/pipeline/context.js');
 const { ClassifyStage } = await import('../src/core/pipeline/classify.js');
 const { RelationshipStage } = await import('../src/core/pipeline/relationship.js');
 const { MemoryStage } = await import('../src/core/pipeline/memory.js');
-
 const { GenerateStage } = await import('../src/core/pipeline/generate.js');
 const { SafetyStage } = await import('../src/core/pipeline/safety.js');
 const { SendStage } = await import('../src/core/pipeline/send.js');
-const { voice } = await import('../src/core/llm/voice.js');
 const typeWP = await import('../src/domain/whatsapp-provider.js');
 type IncomingMessage = typeWP.IncomingMessage;
 type WhatsAppProvider = typeWP.WhatsAppProvider;
@@ -39,34 +38,27 @@ const queue = new SendQueue({
   rateLimiter: new RateLimiter(),
 });
 const pipeline = new Pipeline(
-  new MessageStage(), new ContactStage(), new ContextStage(), new ClassifyStage(), new RelationshipStage(), new MemoryStage(), new GenerateStage(),
+  new MessageStage(), new ContactStage(), new ContextStage(), new ClassifyStage(),
+  new RelationshipStage(), new MemoryStage(), new GenerateStage(),
   new SafetyStage(), new SendStage({ queue }),
 );
 
 const mk = (jid: string, body: string): IncomingMessage => ({
-  waMessageId: 'slang-' + Math.random().toString(36).slice(2),
+  waMessageId: 'lat-' + Math.random().toString(36).slice(2),
   jid, senderJid: jid, body, timestamp: Date.now(), fromMe: false, kind: 'text',
 });
 
-const cases: { input: string; expectIntent: string[]; label: string }[] = [
-  { input: 'gass ngopi bentar, gw otw nih', expectIntent: ['meeting', 'casual', 'commitment'], label: 'gaul: gas/otw' },
-  { input: 'anjir lama bgt yg, gmn sih', expectIntent: ['conflict', 'casual', 'question'], label: 'typo+slang: anjir/bgt/yg/gmn' },
-  { input: 'bro pinjem dlu 200rb ya, ganti minggu dpn', expectIntent: ['money'], label: 'pinjam uang slang' },
-  { input: 'kuy main ke kos, mager nih sendirian', expectIntent: ['commitment', 'meeting', 'casual'], label: 'kuy/mager' },
-];
+const jid = '62' + Math.floor(8110000000 + Math.random() * 899999999) + '@s.whatsapp.net';
+const inputs = ['bro main gak nanti?', 'besok gua transfer 300rb ya janji'];
 
-let pass = 0;
-let fail = 0;
-for (const c of cases) {
-  const jid = '62' + Math.floor(8120000000 + Math.random() * 799999999) + '@s.whatsapp.net';
-  const ctx = createPipelineContext(mk(jid, c.input));
+for (const input of inputs) {
+  const t0 = Date.now();
+  const ctx = createPipelineContext(mk(jid, input));
   await pipeline.run(ctx);
-  const ok = c.expectIntent.includes(ctx.intent);
-  console.log((ok ? 'PASS' : 'FAIL') + ' [' + c.label + ']');
-  console.log('   in : ' + c.input);
-  console.log('   intent=' + ctx.intent + ' (expect ' + c.expectIntent.join('/') + ') risk=' + ctx.riskLevel);
-  console.log('   out: ' + JSON.stringify(ctx.draft.slice(0, 120)));
-  if (ok) pass++; else fail++;
+  const ms = Date.now() - t0;
+  console.log(`IN : ${input}`);
+  console.log(`   ${Math.round(ms / 1000)}s | decision=${ctx.decision} intent=${ctx.intent} risk=${ctx.riskLevel} strategy=${ctx.strategy}`);
+  console.log(`   OUT: ${JSON.stringify(ctx.draft.slice(0, 100))}`);
 }
-console.log('\nSLANG RESULT: ' + pass + ' pass, ' + fail + ' fail');
-process.exit(fail === 0 ? 0 : 1);
+
+console.log('\nLATENCY CHECK DONE');

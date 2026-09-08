@@ -63,7 +63,7 @@ export class ClassifyStage implements Stage {
           { role: 'system', content: SYSTEM },
           { role: 'user', content: user },
         ],
-        { purpose: 'classify', json: true, maxTokens: 1200, temperature: 0.2 },
+        { purpose: 'classify', json: true, maxTokens: 1200, temperature: 0.2, fast: true },
       );
       const parsed = parseLlmJson<{
         intent?: unknown;

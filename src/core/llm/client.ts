@@ -7,8 +7,11 @@ import { LlmUsageRepository } from '../../storage/index.js';
 
 const log = childLogger('llm');
 
-const MAX_ATTEMPTS = 3; // 1 awal + 2 retry
-const RETRY_BACKOFF_MS = 2_000;
+const MAX_ATTEMPTS = 2; // 1 awal + 1 retry — selebihnya handle oleh fallback chain
+const RETRY_BACKOFF_MS = 1_000;
+/** Circuit breaker: N kegagalan beruntun di primary → skip primary selama window. */
+const CB_THRESHOLD = 2;
+const CB_OPEN_MS = 60_000;
 /** Estimasi konservatif USD per 1M token — model free, tapi volume tetap dilacak. */
 const USD_PER_MTOKEN = 0.35;
 
@@ -34,6 +37,11 @@ export interface ChatOptions {
    */
   json?: boolean;
   maxTokens?: number;
+  /**
+   * Task ringan (classify/safety verify) → pakai fastModel (glm-5.3-flash via 9router)
+   * dengan timeout ketat. Generate tetap model penuh demi kualitas.
+   */
+  fast?: boolean;
 }
 
 interface ChatCompletionResponse {
@@ -72,6 +80,10 @@ function parseCompletionJson(text: string): ChatCompletionResponse {
 }
 
 export class LlmClient {
+  /** Circuit breaker primary: failures berturut + jendela skip. */
+  private cbFailures = 0;
+  private cbOpenedAt = 0;
+
   /**
    * Kirim chat completion. Throw BudgetExceededError saat budget habis —
    * caller WAJIB catch dan degrade gracefully (hold, jangan crash).
@@ -80,7 +92,8 @@ export class LlmClient {
    * `reasoning_content`, `content` bisa null saat max_tokens habis di tengah
    * reasoning (finish_reason=length) → retry otomatis dengan max_tokens lebih besar.
    *
-   * Chain provider: primary → backup (9router) kalau primary gagal total.
+   * Chain provider: primary → backup (9router). Circuit breaker: primary
+   * yang sakit di-skip dulu (60s) supaya latensi tidak meledak.
    */
   async chat(messages: ChatMessage[], opts?: ChatOptions): Promise<string> {
     const purpose = opts?.purpose ?? 'chat';
@@ -96,22 +109,45 @@ export class LlmClient {
       },
     ];
     const fb = config.llm.fallback;
-    if (fb.baseUrl !== '' && fb.model !== '' && fb.apiKey !== '') {
-      providers.push({ name: 'backup', baseUrl: fb.baseUrl, apiKey: fb.apiKey, model: fb.model, timeoutMs: fb.timeoutMs });
+    if (fb.baseUrl !== '' && fb.apiKey !== '') {
+      const fbModel = opts?.fast && fb.fastModel !== '' ? fb.fastModel : fb.model;
+      if (fbModel !== '') {
+        providers.push({
+          name: 'backup',
+          baseUrl: fb.baseUrl,
+          apiKey: fb.apiKey,
+          model: fbModel,
+          timeoutMs: opts?.fast ? fb.fastTimeoutMs : fb.timeoutMs,
+        });
+      }
     }
 
+    const cbOpen = Date.now() - this.cbOpenedAt < CB_OPEN_MS;
+    const ordered = cbOpen && providers.length > 1 ? [...providers].reverse() : providers;
+
     let lastErr: unknown;
-    for (const p of providers) {
+    for (const p of ordered) {
       try {
-        return await this.chatWith(p, messages, opts);
+        const out = await this.chatWith(p, messages, opts);
+        if (p.name === 'primary') {
+          this.cbFailures = 0;
+        }
+        return out;
       } catch (err) {
         if (err instanceof BudgetExceededError) throw err;
         lastErr = err;
-        if (p.name === 'primary' && providers.length > 1) {
-          log.warn(
-            { purpose, provider: p.name, err: errMsg(err) },
-            'primary LLM gagal — fallback ke backup provider',
-          );
+        if (p.name === 'primary') {
+          this.cbFailures++;
+          if (this.cbFailures >= CB_THRESHOLD) {
+            this.cbOpenedAt = Date.now();
+            log.warn(
+              { purpose, failures: this.cbFailures },
+              `primary LLM sakit (${this.cbFailures}x) — circuit breaker open 60s, backup first`,
+            );
+          }
+          if (ordered.length > 1) {
+            log.warn({ purpose, err: errMsg(err) }, 'primary LLM gagal — fallback ke backup provider');
+          }
         }
       }
     }
