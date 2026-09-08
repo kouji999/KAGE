@@ -25,38 +25,41 @@ Abaikan basa-basi dan hal sementara. Kalau tidak ada yang signifikan, kembalikan
 Balas HANYA JSON: {"memories":[{"type":"fact|event|preference","content":"<satu kalimat singkat>"}]}`;
 
 /**
- * Dipanggil generate stage SETELAH draft berhasil dibuat.
- * Gagal apa pun di-skip diam-diam — ekstraksi memori tidak boleh mengganggu alur.
- * Dedup ditangani MemoryRepository (content identik di-skip).
+ * Dipanggil generate stage SETELAH draft berhasil dibuat — FIRE-AND-FORGET.
+ * LATENSI: ekstraksi memori TIDAK menahan pengiriman balasan. Draft sudah
+ * tersimpan; memori masuk belakangan via promise terpisah.
+ * Gagal apa pun di-skip diam-diam. Dedup ditangani MemoryRepository.
  */
-export async function extractMemories(draft: string, contactJid: string): Promise<void> {
-  try {
-    const raw = await llm.chat(
-      [
-        { role: 'system', content: EXTRACT_SYSTEM },
-        { role: 'user', content: draft },
-      ],
-      { purpose: 'memory', json: true, maxTokens: 1200, temperature: 0.1 },
-    );
+export function extractMemories(draft: string, contactJid: string): void {
+  void (async () => {
+    try {
+      const raw = await llm.chat(
+        [
+          { role: 'system', content: EXTRACT_SYSTEM },
+          { role: 'user', content: draft },
+        ],
+        { purpose: 'memory', json: true, maxTokens: 1200, temperature: 0.1, fast: true },
+      );
 
-    const parsed = parseLlmJson<{ memories?: unknown }>(raw);
-    if (!Array.isArray(parsed?.memories)) return;
+      const parsed = parseLlmJson<{ memories?: unknown }>(raw);
+      if (!Array.isArray(parsed?.memories)) return;
 
-    for (const item of parsed.memories.slice(0, 2)) {
-      if (typeof item !== 'object' || item === null) continue;
-      const rec = item as { type?: unknown; content?: unknown };
-      const content = typeof rec.content === 'string' ? rec.content.trim() : '';
-      if (content === '') continue;
-      const type: MemoryType =
-        rec.type === 'event' || rec.type === 'preference' || rec.type === 'fact'
-          ? rec.type
-          : 'fact';
-      MemoryRepository.add(contactJid, type, content);
+      for (const item of parsed.memories.slice(0, 2)) {
+        if (typeof item !== 'object' || item === null) continue;
+        const rec = item as { type?: unknown; content?: unknown };
+        const content = typeof rec.content === 'string' ? rec.content.trim() : '';
+        if (content === '') continue;
+        const type: MemoryType =
+          rec.type === 'event' || rec.type === 'preference' || rec.type === 'fact'
+            ? rec.type
+            : 'fact';
+        MemoryRepository.add(contactJid, type, content);
+      }
+    } catch (err) {
+      log.debug(
+        { jid: contactJid, err: err instanceof Error ? err.message : String(err) },
+        'memory extraction skipped',
+      );
     }
-  } catch (err) {
-    log.debug(
-      { jid: contactJid, err: err instanceof Error ? err.message : String(err) },
-      'memory extraction skipped',
-    );
-  }
+  })();
 }

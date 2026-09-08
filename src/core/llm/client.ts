@@ -11,7 +11,7 @@ const MAX_ATTEMPTS = 2; // 1 awal + 1 retry — selebihnya handle oleh fallback 
 const RETRY_BACKOFF_MS = 1_000;
 /** Circuit breaker: N kegagalan beruntun di primary → skip primary selama window. */
 const CB_THRESHOLD = 2;
-const CB_OPEN_MS = 60_000;
+const CB_OPEN_MS = 300_000; // 5 menit — primary yang drop total jangan diprobe tiap call
 /** Estimasi konservatif USD per 1M token — model free, tapi volume tetap dilacak. */
 const USD_PER_MTOKEN = 0.35;
 

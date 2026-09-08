@@ -83,7 +83,7 @@ export class GenerateStage implements Stage {
       return;
     }
 
-    await extractMemories(ctx.draft, ctx.incoming.jid);
+    extractMemories(ctx.draft, ctx.incoming.jid); // fire-and-forget, jangan tahan kirim
   }
 }
 
